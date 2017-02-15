@@ -1,0 +1,89 @@
+```{r echo=FALSE}
+library(knitr)
+```
+
+The `Distance` package written by Dave Miller was intended to permit analysis of simple datasets in R.
+
+Using the "flatfile" feature of `Distance`, loading data is simple.  We show as examples, the analysis of a simulated survey of duck nests, consisting of 20 transects, each 128.8km in length.  These data exist as a comma-delimited text file in the current directory (one can find the current working directory in R using `getwd()` and change it with `setwd()`).
+
+
+```{r ducksetup, message=FALSE}
+library(Distance)
+tidy.opts <- list(width.cutoff=40)
+```
+
+```{r readducks, message=FALSE, comment=NA}
+ducknests <- read.csv("ducknests.csv")
+head(ducknests)
+```
+
+Note the following:
+
+* transect length is measured in kilometres but perpendicular distance is measured in metres, therefore a conversion factor of 0.001 converts perpendicular distance metres into kilometres.  Hence the reported nest density will be in nests kilometres^-2^.
+* we have not provided the area of the study area, therefore no estimate of abundance will be produced, but density can be estimated
+* sample label simply refers to the transect number (of which there are 20).
+
+### Detection function fitting
+
+The below code fits three detection functions: half-normal with cosine adjustments, uniform with cosine adjustments and hazard-rate with simple polynomial adjustments. In each case the number of adjustment terms is selected by AIC. The selection process can be seen in the output.
+
+```{r duckhn}
+# Convert.units adjusts for distance measured in metres and effort in km
+halfnorm.ducks <- ds(ducknests, key="hn", adjustment="cos", convert.units = 0.001)
+```
+
+```{r duckfourier}
+unifcos.ducks <- ds(ducknests, key="unif", adjustment="cos", mono="strict", convert.units = 0.001)
+```
+
+```{r duckhaz}
+hazard.ducks <- ds(ducknests, key="hr",  adjustment="poly", convert.units = 0.001)
+```
+
+For both the half-normal and hazard-rate functions, `ds` complains that the detection function is non-monotone (that detection probability increases with distance at some points in the fitted function), however these are for the models with adjustments which are not selected.
+
+### Model selection
+
+AIC scores for the **three** fitted models:
+
+Model | AIC
+------|--------
+Half normal | `r summary(halfnorm.ducks)$ds$aic`
+Uniform cosine | `r summary(unifcos.ducks)$ds$aic`
+Hazard rate | `r summary(hazard.ducks)$ds$aic`
+
+
+### Model fit
+
+Having completed the model selection phase, produce depiction of detection function, show its goodness of fit.
+
+```{r duckhnfit, fig.cap="Perpendicular distances fitted with half normal detection function"}
+par(mfrow=c(1,2))
+plot(halfnorm.ducks, main="Duck nests, half-normal detection function")
+fit.test <- ddf.gof(halfnorm.ducks$ddf)
+par(mfrow=c(1,1))
+```
+My preference is to pluck out the Cramer-von Mises goodness of fit test.  For these data, this test has a test statistic value of `r fit.test$dsgof$CvM$W` with an associated p-value of `r fit.test$dsgof$CvM$p` 
+
+Content with adequate fit of the model to these data, we want to present our density estimate.
+
+###  Population inference
+
+From the first table below, we see that 534 nests were encountered along 2574km of transects.  The encounter rate `(ER)` is the ratio of these values, implying that roughly 5 nests were encountered per kilometre of transect.  We also see the variablity of the encounter rate.
+
+```{r duckdens, comment=NA, results='asis'}
+kable(halfnorm.ducks$dht$individuals$summary,format="markdown")
+```
+
+This second table produces our estimate of duck nest density within the region covered by the survey transects.  The estimate of 49.7 is in units of nests kilometre^-2^, with associated measures of precision in the form of standard error, coefficient of variation and 95% confidence interval bounds.
+
+```{r duckdenstwo, comment=NA, results='asis', warning=FALSE}
+kable(halfnorm.ducks$dht$individuals$D,format="markdown")
+```
+
+Finally at the end of the analysis, reset the R environment in preparation for another analysis.
+
+```{r reset}
+rm(list=ls())
+```
+
